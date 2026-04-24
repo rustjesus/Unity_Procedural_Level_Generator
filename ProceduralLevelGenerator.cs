@@ -1,13 +1,59 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
 using UnityEditor;
-using System.Collections.Generic;
+using UnityEngine;
+using static ProceduralLevelGenerator;
 
 /// <summary>
 /// Procedural Level Generator — Unity Editor Script
 /// Place in any Editor/ folder. Open via: Tools > Procedural Level Generator
-/// </summary>
+/// </summary>[System.Serializable]
+public class ProceduralLevelSettings
+{
+    // Terrain
+    public int terrainWidth;
+    public int terrainLength;
+    public int terrainHeight;
+    public int heightmapRes;
+
+    // Noise
+    public float perlinScale;
+    public int perlinOctaves;
+    public float perlinPersistence;
+    public float perlinLacunarity;
+    public float ridgePower;
+    public float domainWarpStrength;
+    public int smoothIterations;
+    public int smoothRadius;
+    public int randomSeed;
+    public bool useRandomSeed;
+    public float flatness;
+
+    // Textures
+    public bool paintTextures;
+    public float grassMaxHeight;
+    public float rockMinSlope;
+    public float snowMinHeight;
+
+    // Trees
+    public bool generateTrees;
+    public float treeBendFactor;
+    public List<TreeLayer> treeLayers;
+
+    // Grass
+    public bool generateGrassDetail;
+    public int detailResolution;
+    public int detailDensity;
+
+    // Water
+    public bool addWaterPlane;
+    public float waterHeightNorm;
+}
 public class ProceduralLevelGenerator : EditorWindow
 {
+    // ─── Texture Inputs ───────────────────────────────────────────────────────
+    private TerrainLayer grassLayerInput;
+    private TerrainLayer rockLayerInput;
+    private TerrainLayer snowLayerInput;
     // ─── Terrain Settings ────────────────────────────────────────────────────
     private int terrainWidth = 512;
     private int terrainLength = 512;
@@ -24,7 +70,8 @@ public class ProceduralLevelGenerator : EditorWindow
     private int smoothIterations = 3;
     private int smoothRadius = 2;
     private int randomSeed = 42;
-    private bool useRandomSeed = false;
+    private bool useRandomSeed = false; 
+    private float flatness = 0f; // 0 = normal, 1 = completely flat
 
     // ─── Texture Settings ────────────────────────────────────────────────────
     private bool paintTextures = true;
@@ -82,7 +129,17 @@ public class ProceduralLevelGenerator : EditorWindow
         GUILayout.Label("🌍  Procedural Level Generator", header);
         GUILayout.Space(4);
         DrawLine();
+        if (paintTextures)
+        {
+            GUILayout.Space(4);
+            GUILayout.Label("Texture Layers", EditorStyles.boldLabel);
 
+            grassLayerInput = (TerrainLayer)EditorGUILayout.ObjectField("Grass Layer", grassLayerInput, typeof(TerrainLayer), false);
+            rockLayerInput = (TerrainLayer)EditorGUILayout.ObjectField("Rock Layer", rockLayerInput, typeof(TerrainLayer), false);
+            snowLayerInput = (TerrainLayer)EditorGUILayout.ObjectField("Snow Layer", snowLayerInput, typeof(TerrainLayer), false);
+
+            EditorGUILayout.HelpBox("If no TerrainLayer is assigned, a default color will be used.", MessageType.Info);
+        }
         // ── Terrain ──────────────────────────────────────────────────────────
         GUILayout.Label("Terrain", EditorStyles.boldLabel);
         terrainWidth = EditorGUILayout.IntField("Width  (m)", terrainWidth);
@@ -113,7 +170,8 @@ public class ProceduralLevelGenerator : EditorWindow
         if (!useRandomSeed)
             randomSeed = EditorGUILayout.IntField("Seed", randomSeed);
         GUILayout.Space(6);
-
+        flatness = EditorGUILayout.Slider("Flatness", flatness, 0f, 1f);
+        EditorGUILayout.HelpBox("Controls terrain variation. 0 = full detail, 1 = completely flat.", MessageType.None);
         // ── Textures ─────────────────────────────────────────────────────────
         DrawLine();
         GUILayout.Label("Terrain Textures", EditorStyles.boldLabel);
@@ -225,9 +283,116 @@ public class ProceduralLevelGenerator : EditorWindow
         EditorGUI.EndDisabledGroup();
         GUILayout.Space(10);
 
+        DrawLine();
+
+        GUILayout.BeginHorizontal();
+
+        if (GUILayout.Button("💾 Save Settings"))
+            SaveSettings();
+
+        if (GUILayout.Button("📂 Load Settings"))
+            LoadSettings();
+
+        GUILayout.EndHorizontal();
+
         EditorGUILayout.EndScrollView();
     }
+    private void LoadSettings()
+    {
+        string path = "Assets/ProceduralLevelSettings.json";
 
+        if (!System.IO.File.Exists(path))
+        {
+            Debug.LogWarning("No settings file found!");
+            return;
+        }
+
+        string json = System.IO.File.ReadAllText(path);
+        ProceduralLevelSettings data = JsonUtility.FromJson<ProceduralLevelSettings>(json);
+
+        terrainWidth = data.terrainWidth;
+        terrainLength = data.terrainLength;
+        terrainHeight = data.terrainHeight;
+        heightmapRes = data.heightmapRes;
+
+        perlinScale = data.perlinScale;
+        perlinOctaves = data.perlinOctaves;
+        perlinPersistence = data.perlinPersistence;
+        perlinLacunarity = data.perlinLacunarity;
+        ridgePower = data.ridgePower;
+        domainWarpStrength = data.domainWarpStrength;
+        smoothIterations = data.smoothIterations;
+        smoothRadius = data.smoothRadius;
+        randomSeed = data.randomSeed;
+        useRandomSeed = data.useRandomSeed;
+        flatness = data.flatness;
+
+        paintTextures = data.paintTextures;
+        grassMaxHeight = data.grassMaxHeight;
+        rockMinSlope = data.rockMinSlope;
+        snowMinHeight = data.snowMinHeight;
+
+        generateTrees = data.generateTrees;
+        treeBendFactor = data.treeBendFactor;
+        treeLayers = data.treeLayers ?? new List<TreeLayer>();
+
+        generateGrassDetail = data.generateGrassDetail;
+        detailResolution = data.detailResolution;
+        detailDensity = data.detailDensity;
+
+        addWaterPlane = data.addWaterPlane;
+        waterHeightNorm = data.waterHeightNorm;
+
+        Repaint();
+
+        Debug.Log("Loaded settings from " + path);
+    }
+    private void SaveSettings()
+    {
+        ProceduralLevelSettings data = new ProceduralLevelSettings
+        {
+            terrainWidth = terrainWidth,
+            terrainLength = terrainLength,
+            terrainHeight = terrainHeight,
+            heightmapRes = heightmapRes,
+
+            perlinScale = perlinScale,
+            perlinOctaves = perlinOctaves,
+            perlinPersistence = perlinPersistence,
+            perlinLacunarity = perlinLacunarity,
+            ridgePower = ridgePower,
+            domainWarpStrength = domainWarpStrength,
+            smoothIterations = smoothIterations,
+            smoothRadius = smoothRadius,
+            randomSeed = randomSeed,
+            useRandomSeed = useRandomSeed,
+            flatness = flatness,
+
+            paintTextures = paintTextures,
+            grassMaxHeight = grassMaxHeight,
+            rockMinSlope = rockMinSlope,
+            snowMinHeight = snowMinHeight,
+
+            generateTrees = generateTrees,
+            treeBendFactor = treeBendFactor,
+            treeLayers = treeLayers,
+
+            generateGrassDetail = generateGrassDetail,
+            detailResolution = detailResolution,
+            detailDensity = detailDensity,
+
+            addWaterPlane = addWaterPlane,
+            waterHeightNorm = waterHeightNorm
+        };
+
+        string json = JsonUtility.ToJson(data, true);
+
+        string path = "Assets/ProceduralLevelSettings.json";
+        System.IO.File.WriteAllText(path, json);
+
+        AssetDatabase.Refresh();
+        Debug.Log("Saved settings to " + path);
+    }
     private static void DrawLine()
     {
         var r = EditorGUILayout.GetControlRect(false, 1);
@@ -298,7 +463,13 @@ public class ProceduralLevelGenerator : EditorWindow
                 float raw = FractalNoise(nx + wx, ny + wy, mainOffset);
                 float powered = Mathf.Pow(Mathf.Max(raw, 0f), ridgePower);
                 float blend = Mathf.Clamp01((ridgePower - 1f) / 3f);
-                h[y, x] = Mathf.Clamp(Mathf.Lerp(raw, powered, blend), 0.001f, 1f);
+                float height = Mathf.Lerp(raw, powered, blend);
+
+                // Apply flatness (compress toward midpoint height)
+                float flatTarget = 0.5f; // you can tweak this if you want sea-level flattening instead
+                height = Mathf.Lerp(height, flatTarget, flatness);
+
+                h[y, x] = Mathf.Clamp(height, 0.001f, 1f);
             }
         return h;
     }
@@ -350,43 +521,77 @@ public class ProceduralLevelGenerator : EditorWindow
         int res = td.alphamapResolution;
         int hRes = heights.GetLength(0);
 
-        TerrainLayer grassLayer = CreateTerrainLayer("Grass", new Color(0.28f, 0.52f, 0.18f));
-        TerrainLayer rockLayer = CreateTerrainLayer("Rock", new Color(0.48f, 0.43f, 0.36f));
-        TerrainLayer snowLayer = CreateTerrainLayer("Snow", new Color(0.92f, 0.95f, 0.98f));
+        // Use user-provided layers OR fallback to generated ones
+        TerrainLayer grassLayer = grassLayerInput != null
+            ? grassLayerInput
+            : CreateTerrainLayer("Grass", new Color(0.28f, 0.52f, 0.18f));
+
+        TerrainLayer rockLayer = rockLayerInput != null
+            ? rockLayerInput
+            : CreateTerrainLayer("Rock", new Color(0.48f, 0.43f, 0.36f));
+
+        TerrainLayer snowLayer = snowLayerInput != null
+            ? snowLayerInput
+            : CreateTerrainLayer("Snow", new Color(0.92f, 0.95f, 0.98f));
+
+        // Assign layers
         td.terrainLayers = new TerrainLayer[] { grassLayer, rockLayer, snowLayer };
 
         float[,,] splatmap = new float[res, res, 3];
+
         for (int y = 0; y < res; y++)
+        {
             for (int x = 0; x < res; x++)
             {
                 float nx = (float)x / (res - 1);
                 float ny = (float)y / (res - 1);
+
                 int hx = Mathf.Clamp(Mathf.RoundToInt(nx * (hRes - 1)), 0, hRes - 1);
                 int hy = Mathf.Clamp(Mathf.RoundToInt(ny * (hRes - 1)), 0, hRes - 1);
+
                 float normH = heights[hy, hx];
                 float slope = td.GetSteepness(nx, ny);
 
-                float wGrass, wRock, wSnow;
+                float wGrass = 0f, wRock = 0f, wSnow = 0f;
+
                 if (normH >= snowMinHeight)
                 {
                     float t = Mathf.InverseLerp(snowMinHeight, 1f, normH);
-                    wSnow = t; wRock = 1f - t; wGrass = 0f;
+                    wSnow = t;
+                    wRock = 1f - t;
                 }
-                else if (slope >= rockMinSlope) { wRock = 1f; wGrass = 0f; wSnow = 0f; }
-                else if (normH <= grassMaxHeight) { wGrass = 1f; wRock = 0f; wSnow = 0f; }
+                else if (slope >= rockMinSlope)
+                {
+                    wRock = 1f;
+                }
+                else if (normH <= grassMaxHeight)
+                {
+                    wGrass = 1f;
+                }
                 else
                 {
                     float t = Mathf.InverseLerp(grassMaxHeight, snowMinHeight, normH);
-                    wGrass = 1f - t; wRock = t; wSnow = 0f;
+                    wGrass = 1f - t;
+                    wRock = t;
+                }
+
+                // Normalize (important if blending)
+                float total = wGrass + wRock + wSnow;
+                if (total > 0f)
+                {
+                    wGrass /= total;
+                    wRock /= total;
+                    wSnow /= total;
                 }
 
                 splatmap[y, x, 0] = wGrass;
                 splatmap[y, x, 1] = wRock;
                 splatmap[y, x, 2] = wSnow;
             }
+        }
+
         td.SetAlphamaps(0, 0, splatmap);
     }
-
     private TerrainLayer CreateTerrainLayer(string layerName, Color colour)
     {
         Texture2D tex = new Texture2D(4, 4);
