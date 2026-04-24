@@ -6,7 +6,8 @@ using static ProceduralLevelGenerator;
 /// <summary>
 /// Procedural Level Generator — Unity Editor Script
 /// Place in any Editor/ folder. Open via: Tools > Procedural Level Generator
-/// </summary>[System.Serializable]
+/// </summary>
+[System.Serializable]
 public class ProceduralLevelSettings
 {
     // Terrain
